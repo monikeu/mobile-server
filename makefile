@@ -24,6 +24,23 @@ test:
 
 setup: dependencies build
 
+push:
+	docker tag `cat id.txt` monikeu/mobile-server
+	docker push monikeu/mobile-server
+
+deploy_minikube:
+	kubectl apply -f deployment.yaml
+	kubectl expose deployment flask-deployment --type="NodePort" --port 5000
+	minikube service flask-deployment
+
+undeploy_gcp:
+	gcloud container clusters delete mobilki --zone us-central1-a
+
+deploy_gcp:
+	gcloud container clusters create mobilki --preemptible  --zone  us-central1-a --scopes cloud-platform --num-nodes 1
+	kubectl apply -f deployment.yaml
+	kubectl expose deployment flask-deployment --type LoadBalancer --port 5000 --target-port 5000
+
 dependencies: clean_work
 	curl https://download.java.net/openjdk/jdk14/ri/openjdk-14+36_linux-x64_bin.tar.gz -o resources/openjdk-14-linux-x64.tar.gz
 	tar -zxvf  resources/openjdk-14-linux-x64.tar.gz
