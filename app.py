@@ -1,4 +1,3 @@
-import pickle
 import subprocess
 import uuid
 
@@ -7,6 +6,7 @@ from flask import Flask, request, send_file, make_response
 from model import *
 
 app = Flask(__name__)
+global_model = Mobilenet(input_size=8, lr=0.005, momentum=0.9)
 
 
 @app.route('/calc', methods=['POST'])
@@ -29,19 +29,13 @@ def calc():
     return resp
 
 
-@app.route('/updateModel/<float:alpha>', methods=['POST', 'GET'])
-def updateModel(alpha: float):
-    global first_run
-    state_dict = pickle.loads(request.data)
-    if first_run:
-        first_run = False
-        init_layers(state_dict)
+@app.route('/updateModel', methods=['POST', 'GET'])
+def updateModel():
+    request_data = request.json
+    global_model.updateModel(request_data['input'], request_data['result'], request_data['mode'])
+    print("aahaga")
+    return ('', 200)
 
-    deltas = compute_deltas(local_model=state_dict, alpha=alpha)
-    update_global(deltas)
-
-    resp = make_response(pickle.dumps(deltas))
-    return resp
 
 
 if __name__ == '__main__':
