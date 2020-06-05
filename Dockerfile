@@ -9,11 +9,13 @@ RUN tar -zxvf  openjdk-14-linux-x64.tar.gz && \
 	/usr/bin/python3.7 -m pip install -r requirements.txt && \
 	mkdir work
 
-COPY app.py /
 COPY model.py /
+COPY app.py /
 EXPOSE 5000
 ENV FLASK_APP=app.py
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+RUN mkdir /model
+RUN chmod 777 /model
 #CMD which python3 && whereis pythonkubectl logs3 && echo $PATH && flask run --host=0.0.0.0
 CMD /usr/bin/python3.7 -m flask run --host=0.0.0.0

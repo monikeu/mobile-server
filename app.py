@@ -1,4 +1,5 @@
 import subprocess
+import time
 import uuid
 
 from flask import Flask, request, send_file, make_response
@@ -36,6 +37,13 @@ def updateModel():
     print("aahaga")
     return ('', 200)
 
+
+@app.route('/test')
+def test():
+    ratio_ = time.time().as_integer_ratio()[0]
+    f = open("model/test-file-" + str(ratio_), "w+")
+    f.write(str(ratio_))
+    return ('', 200)
 
 
 if __name__ == '__main__':

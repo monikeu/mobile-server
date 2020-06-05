@@ -25,21 +25,28 @@ test:
 setup: dependencies build
 
 push:
-	docker tag `cat id.txt` monikeu/mobile-server
 	docker push monikeu/mobile-server
 
 deploy_minikube:
+	kubectl apply -f pvc.yaml
 	kubectl apply -f deployment.yaml
-	kubectl expose deployment flask-deployment --type="NodePort" --port 5000
+	kubectl expose deployment flask-deployment --type LoadBalancer --port 5000 --target-port 5000
 	minikube service flask-deployment
+
+delete_kubernetes:
+	kubectl delete service flask-deployment
+	kubectl delete deployment flask-deployment
+	kubectl delete pvc model-volume-claim
 
 undeploy_gcp:
 	gcloud container clusters delete mobilki --zone us-central1-a
 
 deploy_gcp:
 	gcloud container clusters create mobilki --preemptible  --zone  us-central1-a --scopes cloud-platform --num-nodes 1
+	kubectl apply -f pvc.yaml
 	kubectl apply -f deployment.yaml
 	kubectl expose deployment flask-deployment --type LoadBalancer --port 5000 --target-port 5000
+	kubectl get services
 
 dependencies: clean_work
 	curl https://download.java.net/openjdk/jdk14/ri/openjdk-14+36_linux-x64_bin.tar.gz -o resources/openjdk-14-linux-x64.tar.gz
@@ -57,4 +64,6 @@ copy_jar:
 	cp ../mobile-conversion/target/mobile-conversion-1.0-SNAPSHOT.jar ./resources/
 
 dupa:
-	rm -rf work
+	mkdir tmp
+	kubectl cp DEPLOYMENT-NAME:/model ./tmp
+	docker tag `cat work/id.txt` monikeu/mobile-server
