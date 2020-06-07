@@ -98,7 +98,7 @@ class Mobilenet(nn.Module):
         l = loss.item()
         print(l)
         self.losses.append(l)
-        inputToSave = input.tolist()[0][0][:-1]
+        inputToSave = input.tolist()[0][0]
         if mode == 1:
             self.cloud_results.append([result, *inputToSave])
         else:
