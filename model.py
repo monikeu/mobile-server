@@ -7,7 +7,8 @@ import torch.optim as optim
 from torch import nn, Tensor
 
 MODEL_PATH = '/model/'
-GLOBAL_MODEL_PATH = f'{MODEL_PATH}global_model_state.pt'
+GLOBAL_MODEL_PATH_LOCAL = f'{MODEL_PATH}global_model_state_local.pt'
+GLOBAL_MODEL_PATH_CLOUD = f'{MODEL_PATH}global_model_state_cloud.pt'
 MODEL_TORCHSCRIPT_PATH = f'{MODEL_PATH}model.pt'
 CLOUD_RESULTS_PATH = f'{MODEL_PATH}cloud_result.csv'
 LOCAL_RESULTS_PATH = f'{MODEL_PATH}local_result.csv'
@@ -30,16 +31,28 @@ def update_csv(path: str, lines: List[List]):
 
 
 class Mobilenet(nn.Module):
-    def __init__(self, input_size: int, lr: float = 0.005, momentum: float = 0.9, save_interval: int = 100):
+    def __init__(self, input_size: int, lr: float = 0.0000001, momentum: float = 0.9, save_interval: int = 100):
 
         super().__init__()
-        self.inner_net = nn.Sequential(nn.Linear(input_size, 32),  # 8?
-                                       nn.ReLU(),
-                                       nn.Linear(32, 1),
-                                       nn.ReLU())
+        self.inner_net_local = nn.Sequential(
+            nn.Linear(input_size, 16),
+            nn.ReLU(),
+            nn.Linear(16, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
 
-        if path.exists(GLOBAL_MODEL_PATH):
-            self.inner_net.load_state_dict(torch.load(GLOBAL_MODEL_PATH))
+        )
+        self.inner_net_cloud = nn.Sequential(nn.Linear(input_size, 16),  # 8?
+                                             nn.ReLU(),
+                                             nn.Linear(16, 32),
+                                             nn.ReLU(),
+                                             nn.Linear(32, 1))
+
+        if path.exists(GLOBAL_MODEL_PATH_LOCAL):
+            self.inner_net_local.load_state_dict(torch.load(GLOBAL_MODEL_PATH_LOCAL))
+
+        if path.exists(GLOBAL_MODEL_PATH_CLOUD):
+            self.inner_net_cloud.load_state_dict(torch.load(GLOBAL_MODEL_PATH_CLOUD))
 
         if not path.exists(CLOUD_RESULTS_PATH):
             init_csv(CLOUD_RESULTS_PATH)
@@ -47,8 +60,10 @@ class Mobilenet(nn.Module):
         if not path.exists(LOCAL_RESULTS_PATH):
             init_csv(LOCAL_RESULTS_PATH)
 
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.SGD(self.inner_net.parameters(), lr=lr, momentum=momentum)
+        self.criterion_l = nn.MSELoss()
+        self.criterion_c = nn.MSELoss()
+        self.optimizer_l = optim.SGD(self.inner_net_local.parameters(), lr=lr, momentum=momentum)
+        self.optimizer_c = optim.SGD(self.inner_net_cloud.parameters(), lr=lr, momentum=momentum)
         self.losses = []
         self.state_interval = save_interval
         self.counter = 1
@@ -72,9 +87,10 @@ class Mobilenet(nn.Module):
         return torch.tensor([result]).view((1, 1, 1))  # todo ogarnąć też inne rzeczy, tj nie tylko czas
 
     def persist_state(self):
-        torch.save(self.inner_net.state_dict(), GLOBAL_MODEL_PATH)
+        torch.save(self.inner_net_cloud.state_dict(), GLOBAL_MODEL_PATH_CLOUD)
+        torch.save(self.inner_net_local.state_dict(), GLOBAL_MODEL_PATH_LOCAL)
 
-        example = torch.rand(1, 1, 7)
+        example = torch.rand(1, 1, 1)
         traced_script_module = torch.jit.trace(self, example)
         traced_script_module.save(MODEL_TORCHSCRIPT_PATH)
 
@@ -88,28 +104,45 @@ class Mobilenet(nn.Module):
 
         self.counter += 1
 
-        input = torch.tensor(input).view(1, 1, 7)
-        self.optimizer.zero_grad()
-        output = self.inner_net(self._with_cloud(input)) if mode == 1 else self.inner_net(self._with_local(input))
-
-        loss = self.criterion(output, self._prepare_target(result))
-        loss.backward()
-        self.optimizer.step()
-        l = loss.item()
-        print(l)
-        self.losses.append(l)
-        inputToSave = input.tolist()[0][0]
+        input_ = torch.tensor([input[-1]]).view(1, 1, 1)
         if mode == 1:
+            self.optimizer_c.zero_grad()
+
+            output = self.inner_net_cloud(input_)
+        else:
+            self.optimizer_l.zero_grad()
+
+            output = self.inner_net_local(input_)
+
+        loss = self.criterion_c(output, self._prepare_target(result)) if mode == 1 else self.criterion_l(output,
+                                                                                                         self._prepare_target(
+                                                                                                             result))
+        loss.backward()
+        if mode == 1:
+            self.optimizer_c.step()
+            l = loss.item()
+            print(f'loss:{l}')
+            self.losses.append(l)
+            inputToSave = input
             self.cloud_results.append([result, *inputToSave])
         else:
+            self.optimizer_l.step()
+            l = loss.item()
+            print(f'loss:{l}')
+            self.losses.append(l)
+            inputToSave = input
+
             self.local_results.append([result, *inputToSave])
         if self.counter % self.state_interval == 0:
             self.persist_state()
 
-    def forward(self, input: Tensor, grad=False):
+    def forward(self, input: Tensor, grad=False, verbose=False):
         def _forward():
-            cloud_cost = self.inner_net(self._with_cloud(input))
-            local_cost = self.inner_net(self._with_local(input))
+            cloud_cost = self.inner_net_cloud(input)
+            local_cost = self.inner_net_local(input)
+
+            if verbose:
+                print(f'local = {local_cost}, cloud = {cloud_cost}')
             # 1. -cloud, 0 - local
 
             return (cloud_cost < local_cost).double()

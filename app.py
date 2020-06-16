@@ -1,31 +1,35 @@
-import subprocess
 import time
 import uuid
 
-from flask import Flask, request, send_file, make_response
+from flask import Flask, request, make_response
 
 from model import *
 
 app = Flask(__name__)
-global_model = Mobilenet(input_size=8, lr=0.005, momentum=0.9)
+global_model = Mobilenet(input_size=1)
+from PIL import Image
 
 
 @app.route('/calc', methods=['POST'])
 def calc():
     data = request.files['file'].read()
-    filename = "work/{0}.png".format(str(uuid.uuid1()))
+    filename = f"/home/robert/PycharmProjects/mobile-server/work/{uuid.uuid1()}.png"
+
     f = open(filename, "wb+")
     f.write(data)
     f.close()
 
-    time_mills = int(subprocess.check_output(
-        ["jdk-14/bin/java", "-jar", "mobile-conversion-1.0-SNAPSHOT.jar", filename]))
+    start = int(time.time() * 1000)
+    for i in range(10):
+        im = Image.open(filename)
+        rgb_im = im.convert('RGB')
+        rgb_im.save(f'{filename}.jpg')
 
     # above command produces below file
-    converted = filename.replace(".png", ".jpg")
+    # converted = filename.replace(".png", ".jpg")
 
-    resp = make_response(send_file(converted))
-    resp.headers['time'] = str(time_mills)
+    resp = make_response()
+    resp.headers['time'] = str(int(time.time() * 1000) - start)
 
     return resp
 
