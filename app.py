@@ -1,7 +1,7 @@
 import time
 import uuid
 
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, send_file
 
 from model import *
 
@@ -31,6 +31,12 @@ def calc():
     resp = make_response()
     resp.headers['time'] = str(int(time.time() * 1000) - start)
 
+    return resp
+
+
+@app.route('/fetchModel', methods=['GET'])
+def fetchModel():
+    resp = make_response(send_file(MODEL_TORCHSCRIPT_PATH))
     return resp
 
 
